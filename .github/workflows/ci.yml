@@ -21,4 +21,6 @@ jobs:
       - run: pnpm --filter secondparty build
       - run: pnpm --filter secondparty test:types
       - run: pnpm --filter secondparty test
-      # Plan C appends the integration and Lighthouse steps here.
+      - run: pnpm --filter rr-node build
+      - run: pnpm --filter rr-workers build
+      - run: SP_SKIP_FIXTURE_BUILD=1 pnpm test:integration
