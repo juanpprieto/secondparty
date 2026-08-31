@@ -7,7 +7,7 @@ beforeEach(async () => {
   await setToggleMode('ok')
 })
 
-describe('single flight (ticket 18)', () => {
+describe('single flight', () => {
   it('cold herd: 5 concurrent calls, 1 vendor fetch, 1 fetch + 4 hit, one path (receipt D)', async () => {
     const { entries, events, cache } = await makeSp({ ok: { url: `${stubOrigin()}/slow.js?ms=100` } })
     const results = await Promise.all(Array.from({ length: 5 }, () => entries.ok({ cache })))

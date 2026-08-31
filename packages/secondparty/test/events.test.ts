@@ -8,7 +8,7 @@ beforeEach(async () => {
   await clearStubLog()
 })
 
-describe('onEvent defaults and faults (ticket 10)', () => {
+describe('onEvent defaults and faults', () => {
   it('console.warns once per error and once per degraded when no hook is set', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {

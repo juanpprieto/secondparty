@@ -41,7 +41,7 @@ describe('entry function: warm hit (row 2)', () => {
   })
 })
 
-describe('extension map (ticket 07 / ticket 12)', () => {
+describe('extension map', () => {
   it.each([
     ['/ok.css', 'css'],
     ['/ok.woff2', 'woff2'],
@@ -55,7 +55,7 @@ describe('extension map (ticket 07 / ticket 12)', () => {
     expect(r.url.endsWith(`.${ext}`)).toBe(true)
   })
 
-  it('follows a redirect and hashes the final body (ticket 12.3)', async () => {
+  it('follows a redirect and hashes the final body', async () => {
     const a = await makeSp({ e: { url: `${stubOrigin()}/redirect.js` } })
     const b = await makeSp({ e: { url: `${stubOrigin()}/ok.js` } })
     const ra = await a.entries.e({ cache: a.cache })
@@ -64,7 +64,7 @@ describe('extension map (ticket 07 / ticket 12)', () => {
   })
 })
 
-describe('revalidation past ttl (ticket 05, receipt A)', () => {
+describe('revalidation past ttl (receipt A)', () => {
   it('sends If-None-Match, takes the 304, keeps the hash', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }) // fake Date only; timers stay real
     const { entries, events, cache } = await makeSp({ ok: { url: `${stubOrigin()}/ok.js`, ttl: 60 } })
@@ -79,7 +79,7 @@ describe('revalidation past ttl (ticket 05, receipt A)', () => {
     expect(events.at(-1)).toMatchObject({ type: 'fetch', status: 304 })
   })
 
-  it('takes new bytes and a new hash when the body rotates (ticket 07)', async () => {
+  it('takes new bytes and a new hash when the body rotates', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const { entries, cache } = await makeSp({ r: { url: `${stubOrigin()}/rotate.js`, ttl: 60 } })
     const first = await entries.r({ cache })

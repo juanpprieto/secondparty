@@ -7,7 +7,7 @@ beforeEach(async () => {
   await setToggleMode('ok')
 })
 
-describe('vendor error codes (ticket 12; all four)', () => {
+describe('vendor error codes (all four)', () => {
   it.each([
     ['status', '/500.js'],
     ['content_type', '/html.js'],
