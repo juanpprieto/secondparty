@@ -1,5 +1,5 @@
 // Minimal CDP client: open a tab, evaluate an expression, close the tab.
-// Exists so the execution check needs no puppeteer dependency (overview deviation note).
+// Exists so the execution check needs no puppeteer dependency.
 
 type Tab = { id: string; webSocketDebuggerUrl: string }
 

@@ -1,4 +1,4 @@
-// Fixture-only, behind SP_FIXTURE_DEBUG=1 (ticket 19 §4). Never a core feature.
+// Fixture-only, behind SP_FIXTURE_DEBUG=1. Never a core feature.
 import type { Route } from './+types/__debug'
 import { state } from '~/debug.server'
 import { entries } from '~/secondparty.config.server'

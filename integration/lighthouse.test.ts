@@ -24,7 +24,7 @@ async function cacheInsightItems(url: string): Promise<Array<{ url?: string }>> 
   const result = await lighthouse(url, {
     port: chrome.port,
     output: 'json',
-    onlyAudits: ['cache-insight'], // Lighthouse 13 audit id (ticket 19)
+    onlyAudits: ['cache-insight'], // Lighthouse 13 audit id
     logLevel: 'error',
   })
   const audit = result!.lhr.audits['cache-insight']!

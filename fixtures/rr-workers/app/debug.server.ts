@@ -1,5 +1,5 @@
 // Fixture-only. Captures onEvent output for the integration driver (SP_FIXTURE_DEBUG=1)
-// or prints the README's JSON-lines recipe otherwise. Never a core feature (ticket 19 §4).
+// or prints the README's JSON-lines recipe otherwise. Never a core feature.
 import type { SecondpartyEvent } from 'secondparty'
 
 export type FlatEvent = { type: string; key: string; site: string; hash?: string; status?: number; code?: string }

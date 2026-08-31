@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { clearStubLog, dbg, setToggleMode, sleep, stubLog, type App } from './driver.ts'
 
-const TTL = 2 // fixture entries use ttl 2 (ticket 19: fixtures use ttl 1-3 s and real waits)
+const TTL = 2 // fixture entries use a short ttl so revalidation tests use real waits
 const assetRe = (key: string, ext = 'js') => new RegExp(`/__sp/${key}\\.([0-9a-f]{16})\\.${ext}`)
 
 export function defineRowTests(getApp: () => App) {
@@ -173,7 +173,7 @@ export function defineRowTests(getApp: () => App) {
     expect(d.events.filter((e) => e.key === 'badct' && e.type === 'error')[0]?.code).toBe('content_type')
   })
 
-  it('receipt D: 5 concurrent cold renders, 4 vendor fetches, 4 fetch + 16 hit (ticket 18)', async () => {
+  it('receipt D: 5 concurrent cold renders, 4 vendor fetches, 4 fetch + 16 hit', async () => {
     await reset()
     const pages = await Promise.all(Array.from({ length: 5 }, () => fetch(`${base()}/`).then((r) => r.text())))
     const hashes = new Set(pages.map((p) => p.match(assetRe('ok'))![1]))
