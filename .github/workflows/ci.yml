@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: ['**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter secondparty build
+      - run: pnpm --filter secondparty test:types
+      - run: pnpm --filter secondparty test
+      # Plan C appends the integration and Lighthouse steps here.
