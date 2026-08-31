@@ -24,8 +24,10 @@
     "stub": "node --experimental-strip-types test/stub/serve.ts"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@types/node": "^22.20.1",
     "typescript": "5.9.3",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.0",
+    "wrangler": "4.127.1"
   }
 }
