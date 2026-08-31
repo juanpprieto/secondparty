@@ -1,0 +1,36 @@
+name: nightly
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  real-vendors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter secondparty build
+      - run: node scripts/nightly.mjs
+        env:
+          SP_KLAVIYO_COMPANY_ID: ${{ secrets.SP_KLAVIYO_COMPANY_ID }}
+          SP_YOTPO_LOADER_ID: ${{ secrets.SP_YOTPO_LOADER_ID }}
+          SP_AWIN_AID: ${{ secrets.SP_AWIN_AID }}
+          SP_SHOP_DOMAIN: ${{ secrets.SP_SHOP_DOMAIN }}
+      - name: Open an issue on failure (nightly never blocks a push)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "nightly real-vendor run failed ($(date -u +%F))" \
+            --body "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
