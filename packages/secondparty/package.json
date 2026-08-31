@@ -1,0 +1,31 @@
+{
+  "name": "secondparty",
+  "version": "0.1.0",
+  "description": "Third-party scripts on first-party URLs, cached for a year.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:types": "tsc -p test/types/tsconfig.node.json && tsc -p test/types/tsconfig.dom.json",
+    "stub": "node --experimental-strip-types test/stub/serve.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
