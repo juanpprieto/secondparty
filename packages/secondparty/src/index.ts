@@ -48,6 +48,22 @@ export class SecondpartyError extends Error {
   }
 }
 
+export function createMemoryCache(): CacheLike {
+  const store = new Map<string, { body: Uint8Array; headers: [string, string][]; status: number }>()
+  const keyOf = (r: Request | string) => (typeof r === 'string' ? r : r.url)
+  return {
+    async match(r) {
+      const rec = store.get(keyOf(r))
+      if (!rec) return undefined
+      return new Response(rec.body.slice(), { status: rec.status, headers: rec.headers })
+    },
+    async put(r, res) {
+      const body = new Uint8Array(await res.arrayBuffer())
+      store.set(keyOf(r), { body, headers: [...res.headers], status: res.status })
+    },
+  }
+}
+
 export function defineSecondparty<const T extends Record<string, Entry>>(options: SecondpartyOptions<T>) {
   // globalThis read, not a bare identifier: tsconfig has no dom lib (CacheLike must compile without it).
   if (typeof (globalThis as { document?: unknown }).document !== 'undefined') {
