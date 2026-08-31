@@ -5,6 +5,14 @@
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "test:unit": "pnpm --filter secondparty test",
-    "test:types": "pnpm --filter secondparty test:types"
+    "test:types": "pnpm --filter secondparty test:types",
+    "test:integration": "vitest run -c integration/vitest.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "chrome-launcher": "^1.2.1",
+    "lighthouse": "13.4.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
   }
 }
