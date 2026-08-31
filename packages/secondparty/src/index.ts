@@ -189,20 +189,53 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
     await cache.put(cacheKey(key), new Response(rec.bytes.slice(), { headers }))
   }
 
+  async function writeNegative(cache: CacheLike, key: string, code: SecondpartyError['code']) {
+    await cache.put(
+      cacheKey(key),
+      new Response('x', {
+        headers: {
+          'x-sp-negative': '1',
+          'x-sp-error-code': code,
+          'x-sp-fetched-at': new Date().toISOString(),
+          'cache-control': `s-maxage=${NEGATIVE_TTL}`,
+        },
+      }),
+    )
+  }
+
   async function fetchVendor(key: string, prev?: Record_): Promise<{ status: 200 | 304; rec: Record_; durationMs: number }> {
     const c = cfg(key)
     const headers: Record<string, string> = { 'user-agent': userAgent }
     if (prev?.etag) headers['if-none-match'] = prev.etag
     const t0 = Date.now()
-    const res = await fetch(c.url, { headers, redirect: 'follow', signal: AbortSignal.timeout(c.timeout * 1000) })
+    let res: Response
+    try {
+      res = await fetch(c.url, { headers, redirect: 'follow', signal: AbortSignal.timeout(c.timeout * 1000) })
+    } catch (cause) {
+      const timedOut = cause instanceof Error && cause.name === 'TimeoutError'
+      throw new SecondpartyError(
+        timedOut ? 'timeout' : 'network',
+        key,
+        timedOut ? `vendor timeout after ${c.timeout}s` : `vendor fetch failed: ${(cause as Error)?.message}`,
+        { cause },
+      )
+    }
     const durationMs = Date.now() - t0
     if (res.status === 304 && prev) {
       await res.arrayBuffer().catch(() => {})
       return { status: 304, rec: { ...prev, fetchedAt: new Date().toISOString() }, durationMs }
     }
+    if (res.status < 200 || res.status > 299) {
+      await res.arrayBuffer().catch(() => {})
+      throw new SecondpartyError('status', key, `vendor answered ${res.status}`, { status: res.status })
+    }
     const contentType = res.headers.get('content-type') ?? ''
     const mime = contentType.split(';')[0]!.trim().toLowerCase()
-    const ext = EXT[mime]!
+    const ext = EXT[mime]
+    if (!ext) {
+      await res.arrayBuffer().catch(() => {})
+      throw new SecondpartyError('content_type', key, `content-type outside the map: ${contentType}`)
+    }
     const bytes = new Uint8Array(await res.arrayBuffer())
     const rec: Record_ = { bytes, contentType, ext, hash: await sha256hex16(bytes), fetchedAt: new Date().toISOString() }
     const etag = res.headers.get('etag')
@@ -217,6 +250,13 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
   async function resolve(cache: CacheLike, key: string, site: 'render' | 'handler'): Promise<Outcome> {
     const c = cfg(key)
     const existing = await readRecord(cache, key)
+    if (existing && 'negative' in existing) {
+      if (ageOf(existing.fetchedAt) < NEGATIVE_TTL) {
+        const error = new SecondpartyError(existing.code, key, `inside negative window (${existing.code})`)
+        emit({ type: 'degraded', key, site, error })
+        return { stale: false, degraded: true, error }
+      }
+    }
     const prev = existing && !('negative' in existing) ? existing : undefined
     if (prev && ageOf(prev.fetchedAt) < c.ttl) {
       emit({ type: 'hit', key, site, hash: prev.hash, fetchedAt: prev.fetchedAt })
@@ -226,10 +266,23 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
   }
 
   async function fetchAndStore(cache: CacheLike, key: string, site: 'render' | 'handler', prev?: Record_): Promise<Outcome> {
-    const { status, rec, durationMs } = await fetchVendor(key, prev)
-    await writeRecord(cache, key, rec)
-    emit({ type: 'fetch', key, site, hash: rec.hash, fetchedAt: rec.fetchedAt, status, durationMs })
-    return { rec, stale: false, degraded: false }
+    const c = cfg(key)
+    try {
+      const { status, rec, durationMs } = await fetchVendor(key, prev)
+      await writeRecord(cache, key, rec)
+      emit({ type: 'fetch', key, site, hash: rec.hash, fetchedAt: rec.fetchedAt, status, durationMs })
+      return { rec, stale: false, degraded: false }
+    } catch (e) {
+      const error = e instanceof SecondpartyError ? e : new SecondpartyError('network', key, String(e), { cause: e })
+      emit({ type: 'error', key, site, error })
+      if (prev && ageOf(prev.fetchedAt) < c.staleTtl) {
+        emit({ type: 'stale', key, site, hash: prev.hash, fetchedAt: prev.fetchedAt })
+        return { rec: prev, stale: true, degraded: false, error }
+      }
+      await writeNegative(cache, key, error.code)
+      emit({ type: 'degraded', key, site, error })
+      return { stale: false, degraded: true, error }
+    }
   }
 
   const entries = Object.fromEntries(
