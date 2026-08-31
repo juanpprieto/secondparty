@@ -92,50 +92,46 @@ revalidation.
 
 ## Limitations
 
-**1. Freshness is bounded by `ttl`.** Each entry has a fixed `ttl` (default 1 hour). Inside it every
-visitor gets the record fetched last, whatever the vendor serves now. Past it the next render
-revalidates and the hash changes. A vendor change lands within one `ttl`. The old asset path keeps
-serving the current bytes, so stale HTML never 404s. `secondparty` ignores the vendor's
-`Cache-Control`. Set a shorter `ttl` on entries whose vendor ships hotfixes.
+**1. Freshness is bounded by `ttl`.** A vendor change lands within one `ttl`: inside it every
+visitor gets the record fetched last; past it the next render revalidates and the hash changes. The
+old asset path keeps serving the current bytes, so stale HTML never 404s. Set a shorter `ttl` on
+entries whose vendor ships hotfixes.
 
-**2. Chained nodes stay on the vendor CDN.** An entry covers one URL: the one your page references.
-Bodies are verbatim, so a loader that builds child URLs keeps loading them from the vendor CDN with
-the vendor's cache lifetime. Lighthouse lists the residual per URL. Examples seen on a live
-storefront: Meta `signals/config` and the `tr` pixel, Clarity `clarity.js`, Global-e
-`freeShippingBanner` and `cookieConsentScript`, Forter `main.<hash>.js`. A relative `url()` in a
-proxied stylesheet or a relative `sourceMappingURL` resolves under your prefix and answers 404; an
-absolute one stays on the vendor CDN. Declaring a child URL as its own entry changes nothing unless
-your page references that asset path.
+**2. Chained loads stay on the vendor CDN.** An entry covers the one URL your page references.
+Bodies are verbatim, so a loader that builds child URLs keeps them on the vendor CDN with the
+vendor's cache lifetime; Lighthouse lists the residual per URL. Seen on a live storefront: Meta
+`signals/config` and the `tr` pixel, Clarity `clarity.js`, Global-e `freeShippingBanner` and
+`cookieConsentScript`, Forter `main.<hash>.js`. A relative `url()` or `sourceMappingURL` in a
+proxied file resolves under your prefix and 404s; an absolute one stays on the vendor CDN. Declaring
+a child URL as its own entry helps only if your page references that asset path.
 
 **3. Vendors that self-locate.** Some vendor scripts find their own `<script>` tag by URL. Awin
-`awin-shopify-integration-code.js` scans script tags for its file name, finds none under the prefix,
-and exits before it tracks: no error, no cookie, no pixel. Do not proxy Awin. Klaviyo, Meta
-`fbevents.js`, the Yotpo loader, and Vimeo `player.js` run from the asset path (see Vendors). For any
-other vendor, test for effect, not for absence of errors: load the page with the proxied script and
-check the vendor's globals, network requests, and dashboard.
+`awin-shopify-integration-code.js` scans for its file name, finds none under the prefix, and exits
+before it tracks: no error, no cookie, no pixel. Do not proxy Awin. Klaviyo, Meta `fbevents.js`, the
+Yotpo loader, and Vimeo `player.js` run from the asset path (see Vendors). For any other vendor,
+test for effect (see Testing your integration).
 
 **4. Static-only hosts and Vercel Edge.** The handler and the entry functions run on a server at
-request time. A static export (Astro static, a SPA on S3, GitHub Pages) has no server; it cannot use
-`secondparty` and keeps the Lighthouse flag. Vercel Edge runtime has no Cache API and is unsupported.
-Vercel Node functions work.
+request time. A static export (Astro static, a SPA on S3, GitHub Pages) has no server: it cannot use
+`secondparty` and keeps the Lighthouse flag. Vercel Edge has no Cache API and is unsupported; Vercel
+Node functions work.
 
 **5. A degraded result serves the vendor URL.** When no record is usable (cold cache and the vendor
-fails, or a record older than `staleTtl`), the entry function returns the vendor URL with
-`degraded: true`. The page renders, the vendor serves the file, and Lighthouse flags it until the
-next successful fetch. The entry function never throws. The handler answers 502 on the same condition
-and never redirects to the vendor.
+fails, or the record is older than `staleTtl`), the entry function returns the vendor URL with
+`degraded: true`; the page renders and Lighthouse flags it until the next successful fetch. The
+entry function never throws. The handler answers 502 on the same condition and never redirects to
+the vendor.
 
 **6. Vendor faults.** A vendor fault is a timeout (default 5 s), a network failure, a non-2xx status,
-or a Content-Type outside the map. After a fault with no usable record the core stores a negative
-record for 30 s. Renders and handler requests inside that window return the degraded result or 502
-without a vendor fetch. There is no size cap: one record holds one body, whatever its length. A font
-served as `application/octet-stream` is a fault; the vendor must send a `font/*` Content-Type.
+or a Content-Type outside the map. After a fault with no usable record, a 30-second negative record
+answers renders and handler requests (degraded result or 502) without a vendor fetch. There is no
+size cap: one record holds one body. A font served as `application/octet-stream` is a fault; the
+vendor must send a `font/*` Content-Type.
 
 **7. Caches are per process and per data center.** Each Node process and each edge isolate owns its
-cache and its single-flight map. Concurrent renders inside one process share one vendor fetch. A
-cluster with P processes takes P cold fetches per key; each edge location fetches once. Two locations
-can serve different hashes for one entry inside a `ttl`; any hash serves the key's current bytes. In
-a monorepo each app owns its cache; nothing is shared.
+cache and single-flight map. A cluster with P processes takes P cold fetches per key; each edge
+location fetches once, so two locations can serve different hashes for one entry inside a `ttl`. Any
+hash serves the key's current bytes. In a monorepo each app owns its cache; nothing is shared.
 
 **8. `Set-Cookie` and cross-origin.** A `Set-Cookie` header on the handler response disables CDN
 caching on Cloudflare, Oxygen, and Vercel, with no warning. Mount the handler outside session
