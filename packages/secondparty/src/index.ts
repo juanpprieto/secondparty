@@ -189,12 +189,17 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
     await cache.put(cacheKey(key), new Response(rec.bytes.slice(), { headers }))
   }
 
-  async function fetchVendor(key: string): Promise<{ status: 200; rec: Record_; durationMs: number }> {
+  async function fetchVendor(key: string, prev?: Record_): Promise<{ status: 200 | 304; rec: Record_; durationMs: number }> {
     const c = cfg(key)
     const headers: Record<string, string> = { 'user-agent': userAgent }
+    if (prev?.etag) headers['if-none-match'] = prev.etag
     const t0 = Date.now()
     const res = await fetch(c.url, { headers, redirect: 'follow', signal: AbortSignal.timeout(c.timeout * 1000) })
     const durationMs = Date.now() - t0
+    if (res.status === 304 && prev) {
+      await res.arrayBuffer().catch(() => {})
+      return { status: 304, rec: { ...prev, fetchedAt: new Date().toISOString() }, durationMs }
+    }
     const contentType = res.headers.get('content-type') ?? ''
     const mime = contentType.split(';')[0]!.trim().toLowerCase()
     const ext = EXT[mime]!
@@ -217,11 +222,11 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
       emit({ type: 'hit', key, site, hash: prev.hash, fetchedAt: prev.fetchedAt })
       return { rec: prev, stale: false, degraded: false }
     }
-    return fetchAndStore(cache, key, site)
+    return fetchAndStore(cache, key, site, prev)
   }
 
-  async function fetchAndStore(cache: CacheLike, key: string, site: 'render' | 'handler'): Promise<Outcome> {
-    const { status, rec, durationMs } = await fetchVendor(key)
+  async function fetchAndStore(cache: CacheLike, key: string, site: 'render' | 'handler', prev?: Record_): Promise<Outcome> {
+    const { status, rec, durationMs } = await fetchVendor(key, prev)
     await writeRecord(cache, key, rec)
     emit({ type: 'fetch', key, site, hash: rec.hash, fetchedAt: rec.fetchedAt, status, durationMs })
     return { rec, stale: false, degraded: false }

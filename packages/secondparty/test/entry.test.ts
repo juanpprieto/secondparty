@@ -63,3 +63,29 @@ describe('extension map (ticket 07 / ticket 12)', () => {
     expect(ra.url.split('.')[1]).toBe(rb.url.split('.')[1]) // same 16-hex hash
   })
 })
+
+describe('revalidation past ttl (ticket 05, receipt A)', () => {
+  it('sends If-None-Match, takes the 304, keeps the hash', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }) // ticket 19: fake Date only; timers stay real
+    const { entries, events, cache } = await makeSp({ ok: { url: `${stubOrigin()}/ok.js`, ttl: 60 } })
+    const first = await entries.ok({ cache })
+    await clearStubLog()
+    vi.setSystemTime(Date.now() + 61_000)
+    const second = await entries.ok({ cache })
+    expect(second.url).toBe(first.url)
+    const log = await stubLog()
+    expect(log).toHaveLength(1)
+    expect(log[0]!.ifNoneMatch).toBeDefined()
+    expect(events.at(-1)).toMatchObject({ type: 'fetch', status: 304 })
+  })
+
+  it('takes new bytes and a new hash when the body rotates (ticket 07)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const { entries, cache } = await makeSp({ r: { url: `${stubOrigin()}/rotate.js`, ttl: 60 } })
+    const first = await entries.r({ cache })
+    vi.setSystemTime(Date.now() + 61_000)
+    const second = await entries.r({ cache })
+    expect(second.url).not.toBe(first.url)
+    expect(second.url).toMatch(/^\/__sp\/r\.[0-9a-f]{16}\.js$/)
+  })
+})
