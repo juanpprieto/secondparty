@@ -39,6 +39,7 @@ const EXT: Record<string, string> = {
   'application/json': 'json',
 }
 const NEGATIVE_TTL = 30
+const SEGMENT = /^(?<key>[A-Za-z0-9_-]+)\.(?<hash>[0-9a-f]{16})\.(?<ext>[a-z0-9]+)$/
 
 async function sha256hex16(bytes: Uint8Array): Promise<string> {
   // The cast avoids BufferSource, which needs the dom lib this tsconfig excludes.
@@ -311,8 +312,39 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
     ]),
   ) as unknown as Entries<T>
 
-  async function handle(_request: Request, _ctx: EntryContext): Promise<Response> {
-    throw new Error('secondparty: handle not implemented yet')
+  async function handle(request: Request, { cache }: EntryContext): Promise<Response> {
+    const noStore = (status: number, headers: Record<string, string> = {}) =>
+      new Response(null, { status, headers: { 'cache-control': 'no-store', ...headers } })
+    const segment = new URL(request.url).pathname.split('/').pop() ?? ''
+    const m = SEGMENT.exec(segment)
+    if (!m?.groups) return noStore(404)
+    const { key, hash } = m.groups as { key: string; hash: string }
+    if (!(key in (options.entries as object))) return noStore(404)
+    if (request.method !== 'GET' && request.method !== 'HEAD') return noStore(405, { allow: 'GET, HEAD' })
+    const r = await resolve(cache, key, 'handler')
+    if (!r.rec) return noStore(502, { 'x-secondparty-error': r.error?.code ?? 'network' })
+    const rec = r.rec
+    const c = cfg(key)
+    const headers = new Headers({
+      'content-type': rec.contentType,
+      'content-length': String(rec.bytes.byteLength),
+      etag: `"${rec.hash}"`,
+      vary: 'Accept-Encoding',
+      'x-content-type-options': 'nosniff',
+      'access-control-allow-origin': '*',
+      'x-secondparty-key': key,
+      'x-secondparty-fetched-at': rec.fetchedAt,
+      'x-secondparty-source': c.url,
+      'cache-control':
+        hash === rec.hash && !r.stale
+          ? 'public, max-age=31536000, s-maxage=31536000, immutable'
+          : `public, max-age=${c.ttl}, s-maxage=${c.ttl}`,
+    })
+    if (rec.vendorCacheControl) headers.set('x-secondparty-vendor-cache-control', rec.vendorCacheControl)
+    if (r.stale) headers.set('x-secondparty-stale', '1')
+    const inm = request.headers.get('if-none-match')
+    if (inm && inm.replace(/^W\//, '') === `"${rec.hash}"`) return new Response(null, { status: 304, headers })
+    return new Response(request.method === 'HEAD' ? null : rec.bytes.slice(), { status: 200, headers })
   }
 
   return { entries, handle }

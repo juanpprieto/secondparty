@@ -48,4 +48,15 @@ describe('single flight (ticket 18)', () => {
     expect(again.degraded).toBe(true)
     expect(evs(events.slice(n0))).toEqual(['e:degraded:render'])
   })
+
+  it('mixed sites: one render call and one handler call share one fetch', async () => {
+    const { entries, handle, cache } = await makeSp({ ok: { url: `${stubOrigin()}/slow.js?ms=100` } })
+    const [r, res] = await Promise.all([
+      entries.ok({ cache }),
+      handle(new Request('https://app.example/__sp/ok.0000000000000000.js'), { cache }),
+    ])
+    expect(r.degraded).toBe(false)
+    expect(res.status).toBe(200)
+    expect(await stubLog()).toHaveLength(1)
+  })
 })
