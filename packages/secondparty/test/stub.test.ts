@@ -22,11 +22,11 @@ describe('stub vendor', () => {
   it('logs requests and clears the log on DELETE /__log', async () => {
     await fetch(`${origin()}/__log`, { method: 'DELETE' })
     await fetch(`${origin()}/ok.css`)
-    let log = await (await fetch(`${origin()}/__log`)).json()
+    let log = (await (await fetch(`${origin()}/__log`)).json()) as Array<{ path: string }>
     expect(log).toHaveLength(1)
     expect(log[0].path).toBe('/ok.css')
     await fetch(`${origin()}/__log`, { method: 'DELETE' })
-    log = await (await fetch(`${origin()}/__log`)).json()
+    log = (await (await fetch(`${origin()}/__log`)).json()) as Array<{ path: string }>
     expect(log).toHaveLength(0)
   })
 
