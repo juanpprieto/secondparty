@@ -59,6 +59,7 @@ Each plan ends at a review checkpoint. Do not start the next plan before the che
 | fixtures/rr-node | `@types/react`, `@types/react-dom` | `^19.2` | typecheck |
 | fixtures/rr-workers | all of rr-node, plus `@cloudflare/vite-plugin` `1.54.2`, `wrangler` `4.127.1` | | workerd target |
 | fixtures/hydrogen | `@shopify/hydrogen` scaffold (whatever `pnpm create @shopify/hydrogen` pins) | latest | manual UAT fixture (ticket 19) |
+| root | `@changesets/cli` | `^3.0.1` | release flow (approved addition, 2026-08-31) |
 
 No runtime dependency anywhere. `secondparty` itself has zero `dependencies`.
 
@@ -107,4 +108,6 @@ No runtime dependency anywhere. `secondparty` itself has zero `dependencies`.
 - **Integration asserts `Content-Type` with `startsWith`**, because `react-router-serve` (express) can append a charset. Recorded per ticket 19 ("express Content-Type charset deviation recorded").
 - **Fixture entries point at the stub**, so validation-row receipts use stub keys (`ok`, not `klaviyo`). Ticket 19 already made the stub the witness at every level; real vendors appear only in N and M.
 - **The E-level execution check drives Chrome over raw CDP** (Node `WebSocket`, ~50 lines) instead of a new dependency: `window.__sp` proves the proxied script ran (ticket 19's synthetic body exists for this).
+- **Release flow added after plan E approval (2026-08-31):** root devDependency `@changesets/cli`, `.changeset/config.json`, `.github/workflows/release.yml` (tag push `v*`, npm trusted publishing over OIDC, no token secret), and `docs/releasing.md`. Versioning is manual; the workflow stays dormant until the trusted publisher is registered on npmjs.com.
+- **`repository` field added to `packages/secondparty/package.json` (2026-08-31):** plan E said "no repository field until a remote exists"; the remote exists now.
 - **ADR 0001's "ext from the Content-Type map, then from the vendor URL"**: the spec's handler contract makes a Content-Type outside the map a vendor error, so the URL fallback is dead. The core implements map-only, like the prototype that passed all rows. The spec is the replication target.

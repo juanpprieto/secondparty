@@ -1,0 +1,37 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+
+# npm trusted publishing (OIDC): no token secret anywhere.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          # npm >= 11.5 is required for OIDC publishing; Node 24 ships it.
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter secondparty build
+      - run: pnpm --filter secondparty test
+      - name: fail when src/version.ts differs from package.json
+        run: |
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs'
+            const { VERSION } = await import('./packages/secondparty/dist/version.js')
+            const pkg = JSON.parse(readFileSync('packages/secondparty/package.json', 'utf8'))
+            if (VERSION !== pkg.version) {
+              console.error('version mismatch: src/version.ts ' + VERSION + ' vs package.json ' + pkg.version)
+              process.exit(1)
+            }
+          "
+      - run: npm publish
+        working-directory: packages/secondparty

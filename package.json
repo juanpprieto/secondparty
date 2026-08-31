@@ -9,6 +9,7 @@
     "test:integration": "vitest run -c integration/vitest.config.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.1",
     "@types/node": "^22.20.1",
     "chrome-launcher": "^1.2.1",
     "lighthouse": "13.4.1",
