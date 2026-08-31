@@ -12,7 +12,7 @@ declare module 'vitest' {
 
 export default async function setup(project: TestProject) {
   const stub = await startStubVendor()
-  // deadPort: opened then closed, so a fetch gets ECONNREFUSED (ticket 19 §1).
+  // deadPort: opened then closed, so a fetch gets ECONNREFUSED.
   const deadPort = await new Promise<number>((resolve) => {
     const s = net.createServer()
     s.listen(0, '127.0.0.1', () => {

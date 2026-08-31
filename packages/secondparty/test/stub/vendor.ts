@@ -1,6 +1,6 @@
-// Stub vendor (ticket 19 §1): synthetic bodies, one route per fault mode, request log as witness.
-// Additions over the ticket's route list (overview deviation note): /toggle.js + POST /__mode,
-// because workerd unit tests cannot stop this Node process to simulate vendor-down.
+// Stub vendor: synthetic bodies, one route per fault mode, request log as witness.
+// /toggle.js + POST /__mode exist because workerd unit tests cannot stop this
+// Node process to simulate vendor-down.
 import http from 'node:http'
 import { createHash } from 'node:crypto'
 import type { AddressInfo, Socket } from 'node:net'

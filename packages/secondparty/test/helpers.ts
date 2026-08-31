@@ -6,7 +6,7 @@ export const stubOrigin = () => `http://127.0.0.1:${inject('stubPort')}`
 export const deadOrigin = () => `http://127.0.0.1:${inject('deadPort')}`
 
 // Fresh cache per test. On workerd: a new named cache per call, because miniflare
-// lacks caches.delete and cache objects must never be identity-compared (ticket 18).
+// lacks caches.delete and cache objects must never be identity-compared.
 export async function freshCache(): Promise<CacheLike> {
   const c = (globalThis as { caches?: { open?: (name: string) => Promise<unknown> } }).caches
   if (c?.open) return (await c.open(`sp-test-${crypto.randomUUID()}`)) as CacheLike

@@ -128,7 +128,7 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
   }
   if (failures.length) throw new Error(`secondparty: invalid config\n- ${failures.join('\n- ')}`)
 
-  // The hook wrapper: a set hook replaces the default warn; hook faults are swallowed (ticket 10).
+  // The hook wrapper: a set hook replaces the default warn; hook faults are swallowed.
   const emit = (event: SecondpartyEvent) => {
     if (options.onEvent) {
       try {
@@ -247,7 +247,7 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
 
   type Outcome = { rec?: Record_; stale: boolean; degraded: boolean; error?: SecondpartyError }
 
-  // Ticket 18: one in-flight vendor fetch per key per config, in memory. Keyed per config,
+  // One in-flight vendor fetch per key per config, in memory. Keyed per config,
   // never per cache object: workerd caches.open() returns a new object per call.
   const inflight = new Map<string, Promise<Outcome>>()
 
@@ -269,7 +269,7 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
     const leader = inflight.get(key)
     if (leader) {
       const r = await leader
-      // Waiters emit only their own outcome event, with the leader's error (ticket 18).
+      // Waiters emit only their own outcome event, with the leader's error.
       if (r.degraded || !r.rec) emit({ type: 'degraded', key, site, error: r.error! })
       else if (r.stale) emit({ type: 'stale', key, site, hash: r.rec.hash, fetchedAt: r.rec.fetchedAt })
       else emit({ type: 'hit', key, site, hash: r.rec.hash, fetchedAt: r.rec.fetchedAt })

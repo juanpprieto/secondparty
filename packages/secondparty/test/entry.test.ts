@@ -66,7 +66,7 @@ describe('extension map (ticket 07 / ticket 12)', () => {
 
 describe('revalidation past ttl (ticket 05, receipt A)', () => {
   it('sends If-None-Match, takes the 304, keeps the hash', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] }) // ticket 19: fake Date only; timers stay real
+    vi.useFakeTimers({ toFake: ['Date'] }) // fake Date only; timers stay real
     const { entries, events, cache } = await makeSp({ ok: { url: `${stubOrigin()}/ok.js`, ttl: 60 } })
     const first = await entries.ok({ cache })
     await clearStubLog()

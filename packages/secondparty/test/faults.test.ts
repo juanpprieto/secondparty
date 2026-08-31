@@ -11,7 +11,7 @@ describe('vendor error codes (ticket 12; all four)', () => {
   it.each([
     ['status', '/500.js'],
     ['content_type', '/html.js'],
-    ['content_type', '/octet.woff2'], // a font as application/octet-stream is a fault (ticket 15)
+    ['content_type', '/octet.woff2'], // a font served as application/octet-stream is a fault
   ])('code %s from %s; degraded returns the vendor URL', async (code, route) => {
     const url = `${stubOrigin()}${route}`
     const { entries, events, cache } = await makeSp({ e: { url } })
