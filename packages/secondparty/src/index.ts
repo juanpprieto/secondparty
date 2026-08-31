@@ -1,16 +1,49 @@
 import { VERSION } from './version.js'
 
-// Public types (docs/spec/v1-api.md "Public API"; eight types).
+/**
+ * One vendor asset to serve on a first-party URL.
+ *
+ * @property url - Absolute `http:` or `https:` vendor URL to fetch bytes from.
+ * @property ttl - Seconds a cached record counts as fresh. Default: the config `ttl` (3600).
+ * @property staleTtl - Seconds a stale record still serves when the vendor fails. Must be `>= ttl`. Default: the config `staleTtl` (604800).
+ * @property timeout - Seconds before a vendor fetch aborts. Default: the config `timeout` (5).
+ */
 export type Entry = { url: string; ttl?: number; staleTtl?: number; timeout?: number }
 type Exact<T, Shape> = T & { [K in Exclude<keyof T, keyof Shape>]: never }
+/**
+ * The cache surface secondparty needs: a subset of the Cache API.
+ *
+ * On workerd, pass `await caches.open('secondparty')`.
+ * On Node, pass the object from {@link createMemoryCache}.
+ */
 export type CacheLike = {
   match(request: Request | string): Promise<Response | undefined>
   put(request: Request | string, response: Response): Promise<void>
 }
+/** Per-request context for entry functions and the handler. Holds the cache to read and write records in. */
 export type EntryContext = { cache: CacheLike }
+/**
+ * What an entry function returns to the render.
+ *
+ * @property url - The `/__sp/<key>.<hash>.<ext>` asset path, or the raw vendor URL when degraded.
+ * @property degraded - True when no record exists and the vendor failed; emit the raw URL instead.
+ */
 export type EntryResult = { url: string; degraded: boolean }
+/** One entry's render-time function: resolves the current asset path for that vendor file. */
 export type EntryFunction = (ctx: EntryContext) => Promise<EntryResult>
+/** The map of entry functions, one per key in the config's `entries`. */
 export type Entries<T> = { readonly [K in keyof T]: EntryFunction }
+/**
+ * One observability event from the `onEvent` hook.
+ *
+ * - `hit`: a fresh record served without a vendor request.
+ * - `fetch`: a vendor request completed (status 200 or 304).
+ * - `stale`: a stale record served after a vendor failure.
+ * - `degraded`: no record; the render gets the raw vendor URL, the handler answers 502.
+ * - `error`: a vendor fetch failed; `error.code` says how.
+ *
+ * `site` says where the event came from: a render (entry function) or the `/__sp/*` handler.
+ */
 export type SecondpartyEvent = { key: string; site: 'render' | 'handler' } & (
   | { type: 'hit'; hash: string; fetchedAt: string }
   | { type: 'fetch'; hash: string; fetchedAt: string; status: 200 | 304; durationMs: number }
@@ -18,6 +51,17 @@ export type SecondpartyEvent = { key: string; site: 'render' | 'handler' } & (
   | { type: 'degraded'; error: SecondpartyError }
   | { type: 'error'; error: SecondpartyError }
 )
+/**
+ * Configuration for {@link defineSecondparty}.
+ *
+ * @property entries - The vendor assets, keyed by `[A-Za-z0-9_-]+` names.
+ * @property ttl - Default freshness window in seconds for every entry. Default 3600.
+ * @property staleTtl - Default stale-serving window in seconds. Default 604800 (7 days).
+ * @property timeout - Default vendor fetch timeout in seconds. Default 5.
+ * @property prefix - Asset path prefix. Must start with `/`. Default `/__sp/`.
+ * @property userAgent - `User-Agent` header for vendor fetches. Default `secondparty/<version>`.
+ * @property onEvent - Observability hook. A thrown hook never breaks a render.
+ */
 export type SecondpartyOptions<T extends Record<string, Entry>> = {
   entries: T & { [K in keyof T]: Exact<T[K], Entry> }
   ttl?: number
@@ -60,6 +104,15 @@ type Record_ = {
   vendorCacheControl?: string
 }
 
+/**
+ * A vendor fetch failure, carried on `degraded` and `error` events.
+ *
+ * `code` values:
+ * - `timeout`: the fetch hit the entry's timeout.
+ * - `status`: the vendor answered outside 2xx (see `status`).
+ * - `content_type`: the vendor `Content-Type` is outside the serve map.
+ * - `network`: the fetch itself failed (DNS, refused, reset).
+ */
 export class SecondpartyError extends Error {
   code: 'timeout' | 'status' | 'content_type' | 'network'
   key: string
@@ -80,6 +133,19 @@ export class SecondpartyError extends Error {
   }
 }
 
+/**
+ * An in-memory {@link CacheLike} for runtimes without a Cache API (Node).
+ *
+ * Create one per process and share it across requests, or every request
+ * starts cold and refetches from the vendor.
+ *
+ * @returns A cache backed by a `Map`; bytes copy on read so responses stay independent.
+ * @example
+ * ```ts
+ * let memory: CacheLike | undefined
+ * export const getCache = () => (memory ??= createMemoryCache())
+ * ```
+ */
 export function createMemoryCache(): CacheLike {
   const store = new Map<string, { body: Uint8Array; headers: [string, string][]; status: number }>()
   const keyOf = (r: Request | string) => (typeof r === 'string' ? r : r.url)
@@ -96,6 +162,30 @@ export function createMemoryCache(): CacheLike {
   }
 }
 
+/**
+ * Build the entry functions and the `/__sp/*` handler from one config.
+ *
+ * Call this once in a server-only module. It throws at import time in a
+ * client module, and throws on an invalid config (bad key charset, bad URL,
+ * `ttl <= 0`, `staleTtl < ttl`, `timeout <= 0`, prefix without `/`).
+ *
+ * @param options - Entries plus optional defaults; see {@link SecondpartyOptions}.
+ * @returns `entries` (one {@link EntryFunction} per key) and `handle` (the resource-route handler).
+ * @example
+ * ```ts
+ * // app/secondparty.config.server.ts
+ * export const { entries, handle } = defineSecondparty({
+ *   entries: { tag: { url: 'https://vendor.example/tag.js', ttl: 3600 } },
+ *   onEvent: (e) => console.log(e.type, e.key),
+ * })
+ *
+ * // in a loader
+ * const { url, degraded } = await entries.tag({ cache })
+ *
+ * // in the /__sp/* resource route
+ * export const loader = ({ request }: Route.LoaderArgs) => handle(request, { cache })
+ * ```
+ */
 export function defineSecondparty<const T extends Record<string, Entry>>(options: SecondpartyOptions<T>) {
   // globalThis read, not a bare identifier: tsconfig has no dom lib (CacheLike must compile without it).
   if (typeof (globalThis as { document?: unknown }).document !== 'undefined') {
@@ -312,6 +402,16 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
     ]),
   ) as unknown as Entries<T>
 
+  /**
+   * Serve one `/__sp/<key>.<hash>.<ext>` request.
+   *
+   * Answers 200 with 1-year immutable caching on a hash match, 304 on
+   * `If-None-Match`, 200 with `max-age=<ttl>` on an old hash, 404 on an
+   * unknown key or a bad path, 405 on non-GET/HEAD, 502 when degraded.
+   *
+   * @param request - The incoming resource-route request.
+   * @param ctx - Holds the cache; see {@link EntryContext}.
+   */
   async function handle(request: Request, { cache }: EntryContext): Promise<Response> {
     const noStore = (status: number, headers: Record<string, string> = {}) =>
       new Response(null, { status, headers: { 'cache-control': 'no-store', ...headers } })
