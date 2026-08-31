@@ -10,7 +10,7 @@ from your machine, then register the trusted publisher for every later release.
 
 Gate before the first publish: test the built package in a local app outside this
 repository. Use `npm link`, or install the tarball from `npm pack`. Check the quick
-start against that install.
+start against that install. Steps and run records: `docs/uat/rr8-link.md`.
 
 Per change, on the branch that makes it:
 
