@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "description": "Third-party scripts on first-party URLs, cached for a year.",
   "license": "MIT",
+  "repository": "https://github.com/juanpprieto/secondparty",
+  "keywords": [
+    "third-party",
+    "proxy",
+    "cache",
+    "lighthouse",
+    "performance",
+    "self-host",
+    "scripts"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -11,7 +21,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "engines": {
