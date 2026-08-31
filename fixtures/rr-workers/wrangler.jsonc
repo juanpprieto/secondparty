@@ -1,0 +1,12 @@
+{
+  "name": "rr-workers-fixture",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "./workers/app.ts",
+  "vars": {
+    "SP_FIXTURE_DEBUG": "1",
+    "SP_STUB_ORIGIN": "http://127.0.0.1:4567"
+  },
+  "assets": { "directory": "./build/client" },
+  "observability": { "enabled": true }
+}
