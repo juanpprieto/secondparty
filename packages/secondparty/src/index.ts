@@ -247,6 +247,10 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
 
   type Outcome = { rec?: Record_; stale: boolean; degraded: boolean; error?: SecondpartyError }
 
+  // Ticket 18: one in-flight vendor fetch per key per config, in memory. Keyed per config,
+  // never per cache object: workerd caches.open() returns a new object per call.
+  const inflight = new Map<string, Promise<Outcome>>()
+
   async function resolve(cache: CacheLike, key: string, site: 'render' | 'handler'): Promise<Outcome> {
     const c = cfg(key)
     const existing = await readRecord(cache, key)
@@ -262,7 +266,18 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
       emit({ type: 'hit', key, site, hash: prev.hash, fetchedAt: prev.fetchedAt })
       return { rec: prev, stale: false, degraded: false }
     }
-    return fetchAndStore(cache, key, site, prev)
+    const leader = inflight.get(key)
+    if (leader) {
+      const r = await leader
+      // Waiters emit only their own outcome event, with the leader's error (ticket 18).
+      if (r.degraded || !r.rec) emit({ type: 'degraded', key, site, error: r.error! })
+      else if (r.stale) emit({ type: 'stale', key, site, hash: r.rec.hash, fetchedAt: r.rec.fetchedAt })
+      else emit({ type: 'hit', key, site, hash: r.rec.hash, fetchedAt: r.rec.fetchedAt })
+      return r
+    }
+    const flight = fetchAndStore(cache, key, site, prev).finally(() => inflight.delete(key))
+    inflight.set(key, flight)
+    return flight
   }
 
   async function fetchAndStore(cache: CacheLike, key: string, site: 'render' | 'handler', prev?: Record_): Promise<Outcome> {
