@@ -28,6 +28,37 @@ export type SecondpartyOptions<T extends Record<string, Entry>> = {
   onEvent?: (event: SecondpartyEvent) => void
 }
 
+const EXT: Record<string, string> = {
+  'text/javascript': 'js',
+  'application/javascript': 'js',
+  'application/x-javascript': 'js',
+  'text/css': 'css',
+  'font/woff2': 'woff2',
+  'font/woff': 'woff',
+  'font/ttf': 'ttf',
+  'application/json': 'json',
+}
+const NEGATIVE_TTL = 30
+
+async function sha256hex16(bytes: Uint8Array): Promise<string> {
+  // The cast avoids BufferSource, which needs the dom lib this tsconfig excludes.
+  const buf = await crypto.subtle.digest('SHA-256', bytes as unknown as ArrayBuffer)
+  return [...new Uint8Array(buf)]
+    .slice(0, 8)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+type Record_ = {
+  bytes: Uint8Array
+  contentType: string
+  ext: string
+  hash: string
+  fetchedAt: string
+  etag?: string
+  vendorCacheControl?: string
+}
+
 export class SecondpartyError extends Error {
   code: 'timeout' | 'status' | 'content_type' | 'network'
   key: string
@@ -109,14 +140,100 @@ export function defineSecondparty<const T extends Record<string, Entry>>(options
       console.warn('[secondparty]', event.key, event.type, event.error.code, event.error.message)
     }
   }
-  void emit
-  void userAgent
+  const cacheKey = (key: string) => `https://secondparty.invalid/${key}`
+  const cfg = (key: string) => {
+    const e = (options.entries as Record<string, Entry>)[key]!
+    return { url: e.url, ttl: e.ttl ?? ttl, staleTtl: e.staleTtl ?? staleTtl, timeout: e.timeout ?? timeout }
+  }
+  const ageOf = (fetchedAt: string) => (Date.now() - Date.parse(fetchedAt)) / 1000
+
+  async function readRecord(
+    cache: CacheLike,
+    key: string,
+  ): Promise<{ negative: true; fetchedAt: string; code: SecondpartyError['code'] } | Record_ | undefined> {
+    const res = await cache.match(cacheKey(key))
+    if (!res) return undefined
+    const h = res.headers
+    if (h.get('x-sp-negative')) {
+      return {
+        negative: true,
+        fetchedAt: h.get('x-sp-fetched-at')!,
+        code: (h.get('x-sp-error-code') ?? 'network') as SecondpartyError['code'],
+      }
+    }
+    const rec: Record_ = {
+      bytes: new Uint8Array(await res.arrayBuffer()),
+      contentType: h.get('content-type')!,
+      ext: h.get('x-sp-ext')!,
+      hash: h.get('x-sp-hash')!,
+      fetchedAt: h.get('x-sp-fetched-at')!,
+    }
+    const etag = h.get('x-sp-etag')
+    if (etag) rec.etag = etag
+    const vcc = h.get('x-sp-vendor-cache-control')
+    if (vcc) rec.vendorCacheControl = vcc
+    return rec
+  }
+
+  async function writeRecord(cache: CacheLike, key: string, rec: Record_) {
+    const headers: Record<string, string> = {
+      'content-type': rec.contentType,
+      'x-sp-ext': rec.ext,
+      'x-sp-hash': rec.hash,
+      'x-sp-fetched-at': rec.fetchedAt,
+      // s-maxage keeps the record alive in a real Cache API for the whole retention window.
+      'cache-control': `s-maxage=${cfg(key).staleTtl}`,
+    }
+    if (rec.etag) headers['x-sp-etag'] = rec.etag
+    if (rec.vendorCacheControl) headers['x-sp-vendor-cache-control'] = rec.vendorCacheControl
+    await cache.put(cacheKey(key), new Response(rec.bytes.slice(), { headers }))
+  }
+
+  async function fetchVendor(key: string): Promise<{ status: 200; rec: Record_; durationMs: number }> {
+    const c = cfg(key)
+    const headers: Record<string, string> = { 'user-agent': userAgent }
+    const t0 = Date.now()
+    const res = await fetch(c.url, { headers, redirect: 'follow', signal: AbortSignal.timeout(c.timeout * 1000) })
+    const durationMs = Date.now() - t0
+    const contentType = res.headers.get('content-type') ?? ''
+    const mime = contentType.split(';')[0]!.trim().toLowerCase()
+    const ext = EXT[mime]!
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    const rec: Record_ = { bytes, contentType, ext, hash: await sha256hex16(bytes), fetchedAt: new Date().toISOString() }
+    const etag = res.headers.get('etag')
+    if (etag) rec.etag = etag
+    const vcc = res.headers.get('cache-control')
+    if (vcc) rec.vendorCacheControl = vcc
+    return { status: 200, rec, durationMs }
+  }
+
+  type Outcome = { rec?: Record_; stale: boolean; degraded: boolean; error?: SecondpartyError }
+
+  async function resolve(cache: CacheLike, key: string, site: 'render' | 'handler'): Promise<Outcome> {
+    const c = cfg(key)
+    const existing = await readRecord(cache, key)
+    const prev = existing && !('negative' in existing) ? existing : undefined
+    if (prev && ageOf(prev.fetchedAt) < c.ttl) {
+      emit({ type: 'hit', key, site, hash: prev.hash, fetchedAt: prev.fetchedAt })
+      return { rec: prev, stale: false, degraded: false }
+    }
+    return fetchAndStore(cache, key, site)
+  }
+
+  async function fetchAndStore(cache: CacheLike, key: string, site: 'render' | 'handler'): Promise<Outcome> {
+    const { status, rec, durationMs } = await fetchVendor(key)
+    await writeRecord(cache, key, rec)
+    emit({ type: 'fetch', key, site, hash: rec.hash, fetchedAt: rec.fetchedAt, status, durationMs })
+    return { rec, stale: false, degraded: false }
+  }
 
   const entries = Object.fromEntries(
     Object.keys(options.entries).map((key) => [
       key,
-      async (_ctx: EntryContext): Promise<EntryResult> => {
-        throw new Error(`secondparty: entry "${key}" not implemented yet`)
+      async ({ cache }: EntryContext): Promise<EntryResult> => {
+        const r = await resolve(cache, key, 'render')
+        if (r.degraded || !r.rec) return { url: cfg(key).url, degraded: true }
+        return { url: `${prefix}${key}.${r.rec.hash}.${r.rec.ext}`, degraded: false }
       },
     ]),
   ) as unknown as Entries<T>
