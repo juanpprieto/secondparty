@@ -97,6 +97,25 @@ Row 8 is the gate: the tarball run must pass before the first publish.
 
 ## Runs
 
+### 2026-08-31 — link then tarball — react-router 8 (create-react-router scaffold)
+
+App: fresh `create-react-router` scaffold in a separate folder; entries `vimeo`
+(ttl 86400) and `fbevents`; only the vimeo script is mounted on the page.
+
+| Check | Result | Evidence |
+|---|---|---|
+| 1 types | pass | `tsc --noEmit` clean after one app-layer fix (the scaffold's Welcome component referenced the route loader out of scope; url now passes as a prop — not a package issue) |
+| 2 render | pass | `<script src="/__sp/vimeo.718e1ff73387fc5f.js">` in dev (5174) and prod (3105) |
+| 3 current hash | pass | 200; `cache-control: public, max-age=31536000, s-maxage=31536000, immutable`; `etag: "718e1ff73387fc5f"`; all `x-secondparty-*` headers; `x-secondparty-vendor-cache-control: public, max-age=1800` captured and ignored |
+| 4 If-None-Match | pass | 304 |
+| 5 unknown key | pass | 404; `no-store` |
+| 6 vendor effect | pass | `window.Vimeo` is an object in dev and prod; the only vimeo network request is the localhost asset path — none to player.vimeo.com. `fbq` undefined: entry declared, script never mounted (expected) |
+| 7 warm serve | pass | prod stdout: one `{"sp":"fetch"}` then only `{"sp":"hit"}` across reloads; dev: `fetched-at` constant across hits |
+| 8 tarball parity | pass | `npm i secondparty-0.1.0.tgz`; `node_modules/secondparty` = real dir with exactly `dist`, `README.md`, `LICENSE`, `package.json`; rows 1-7 repeated in prod, same hash, same results |
+
+Gate result: **pass**. The app stays in tarball mode; re-run `npm link secondparty`
+for iteration.
+
 <!-- One dated section per run. Template: -->
 
 ### YYYY-MM-DD — link | tarball — RR version
