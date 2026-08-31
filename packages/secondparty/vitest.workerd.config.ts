@@ -14,6 +14,9 @@ export default defineConfig({
   test: {
     name: 'workerd',
     include: ['test/**/*.test.ts'],
+    // The shared stub vendor log is cross-file state; keep files serial even
+    // when this project runs without the root config.
+    fileParallelism: false,
     globalSetup: ['./test/global-setup.ts'], // runs in the Node host; provide/inject crosses into workerd
     testTimeout: 15000,
   },
