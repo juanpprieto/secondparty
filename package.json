@@ -1,0 +1,10 @@
+{
+  "name": "secondparty-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "test:unit": "pnpm --filter secondparty test",
+    "test:types": "pnpm --filter secondparty test:types"
+  }
+}
