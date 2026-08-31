@@ -343,7 +343,7 @@ The package and its README live in [`packages/secondparty`](packages/secondparty
 
 **Step 3: Check the honesty rules**
 
-Run: `grep -riE 'emmylondon|emmy\.myshopify' README.md packages/secondparty/README.md docs; grep -i 'zero drift' packages/secondparty/README.md; true`
+Run: `grep -riE -f .scratch/honesty-patterns.txt README.md packages/secondparty/README.md docs; grep -i 'zero drift' packages/secondparty/README.md; true`
 Expected: no store name anywhere; "zero drift" appears nowhere in the README (ticket 15). ("zero drift" inside `docs/plans/2026-08-29-naming-design.md` and the ADR is history, not README text — the grep above only guards the README.)
 
 **Step 4: Commit**
@@ -429,7 +429,7 @@ Confirm each line; report the table with pass marks:
 
 ```bash
 git log --oneline | head -40
-grep -riE 'emmylondon|emmy\.myshopify|NfbBz5|4dolcEQMbjLtRV85yyKHHbQ51njE1AfcUl3BdOby|31611' --exclude-dir=node_modules --exclude-dir=.scratch . || echo CLEAN
+grep -riE -f .scratch/honesty-patterns.txt --exclude-dir=node_modules --exclude-dir=.scratch . || echo CLEAN
 git status --short
 ```
 
