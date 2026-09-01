@@ -158,7 +158,9 @@ rotate per `ttl`.
 The config file is the same everywhere: the quick start's `defineSecondparty` block.
 Per platform you choose two things: where the handler mounts and which cache you pass.
 Edge runtimes pass `await caches.open('secondparty')`. Node runtimes pass one
-`createMemoryCache()` per process.
+`createMemoryCache()` per process. File-based routers that hide `_`-prefixed paths
+(Next.js, Astro) cannot mount the default `/__sp/` prefix: their blocks set
+`prefix: '/sp/'` instead.
 
 <details>
 <summary><strong>React Router on Node</strong> — tested (CI, link gate)</summary>
@@ -242,9 +244,11 @@ export const config = { path: '/__sp/*' }
 </details>
 
 <details>
-<summary><strong>Astro</strong> — untested; mount shown</summary>
+<summary><strong>Astro</strong> — tested (docs/uat/astro-link.md)</summary>
 
-Endpoint `src/pages/__sp/[...path].ts`:
+Files under `src/pages/` that start with `_` never route, so the default `/__sp/`
+prefix cannot mount. Set `prefix: '/sp/'` in the config and mount the endpoint at
+`src/pages/sp/[...path].ts`:
 
 ```ts
 import type { APIRoute } from 'astro'
@@ -254,19 +258,22 @@ import { cache } from '../../cache.server'
 export const ALL: APIRoute = ({ request }) => handle(request, { cache })
 ```
 
-`cache.server.ts` exports one `createMemoryCache()`. Any SSR page calls the entry
-function in the frontmatter:
+`cache.server.ts` exports one `createMemoryCache()`. SSR is required: `output:
+'server'`, or `prerender = false` on both the page and the endpoint. Any SSR page
+calls the entry function in the frontmatter:
 
 ```astro
 ---
 import { entries } from '../secondparty.config.server'
 import { cache } from '../cache.server'
-const { url } = await entries.klaviyo({ cache })
+const { url } = await entries.vimeo({ cache })
 ---
 <script src={url} async></script>
 ```
 
-Astro has no build-time server-only guard. The runtime throw covers a client import.
+The dynamic `src` keeps the tag out of Astro's script bundling, so `is:inline` is
+not needed. Astro has no build-time server-only guard. The runtime throw covers a
+client import.
 
 </details>
 
@@ -358,7 +365,8 @@ per-request freshness.
 | React Router 8 | Cloudflare Workers | CI (`wrangler dev`), manual preview (`docs/uat/workers.md`) |
 | Hydrogen | Oxygen | manual (`docs/uat/oxygen.md`) |
 | Next.js | Node 22 | link gate (`docs/uat/next-link.md`) |
-| Astro, Nuxt | any | untested; mount shown |
+| Astro | Node 22 | link gate (`docs/uat/astro-link.md`) |
+| Nuxt | any | untested; mount shown |
 | any | Vercel, Netlify | untested; mount shown |
 
 ## Observability
