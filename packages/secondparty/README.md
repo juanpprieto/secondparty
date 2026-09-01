@@ -135,7 +135,7 @@ cache and single-flight map. A cluster with P processes takes P cold fetches per
 location fetches once, so two locations can serve different hashes for one entry inside a `ttl`. Any
 hash serves the key's current bytes. In a monorepo each app owns its cache. Nothing is shared. A
 bundler that duplicates the cache module across route bundles duplicates the cache too. Next.js
-does. The fix is one `globalThis` line (see Platforms).
+does. One `globalThis` line keeps a single instance (see Platforms).
 
 **8. `Set-Cookie` and cross-origin.** A `Set-Cookie` header on the handler response disables CDN
 caching on Cloudflare, Oxygen, and Vercel, with no warning. Mount the handler outside session
@@ -159,11 +159,11 @@ The config file is the same everywhere: the quick start's `defineSecondparty` bl
 Per platform you choose two things: where the handler mounts and which cache you pass.
 Edge runtimes pass `await caches.open('secondparty')`. Node runtimes pass one
 `createMemoryCache()` per process. File-based routers that hide `_`-prefixed paths
-(Next.js, Astro) cannot mount the default `/__sp/` prefix: their blocks set
-`prefix: '/sp/'` instead.
+(Next.js, Astro) cannot mount the default `/__sp/` prefix. Use `prefix: '/sp/'` on
+those platforms.
 
 <details>
-<summary><strong>React Router on Node</strong> — tested (CI, link gate)</summary>
+<summary><strong>React Router on Node</strong> — tested (CI + manual)</summary>
 
 The quick start is this platform. Bodies leave uncompressed (identity encoding) on
 the assumption that the platform compresses them, which `react-router-serve` already
@@ -361,11 +361,11 @@ per-request freshness.
 
 | Framework | Platform | Checked by |
 |---|---|---|
-| React Router 8 | Node 22 | CI (integration, Lighthouse), link gate (`docs/uat/rr8-link.md`) |
+| React Router 8 | Node 22 | CI (integration, Lighthouse), manual (`docs/uat/rr8-link.md`) |
 | React Router 8 | Cloudflare Workers | CI (`wrangler dev`), manual preview (`docs/uat/workers.md`) |
 | Hydrogen | Oxygen | manual (`docs/uat/oxygen.md`) |
-| Next.js | Node 22 | link gate (`docs/uat/next-link.md`) |
-| Astro | Node 22 | link gate (`docs/uat/astro-link.md`) |
+| Next.js | Node 22 | manual (`docs/uat/next-link.md`) |
+| Astro | Node 22 | manual (`docs/uat/astro-link.md`) |
 | Nuxt | any | untested; mount shown |
 | any | Vercel, Netlify | untested; mount shown |
 
@@ -427,8 +427,8 @@ It also throws when a `document` global exists (client-import guard).
 Test for effect, not for absence of errors: load the page with the proxied script and
 check the vendor's globals, network requests, and dashboard. Lighthouse 13 reports
 cache lifetimes under the `cache-insight` audit ("Use efficient cache lifetimes").
-After the swap, your entries leave that list. Deployed-platform checklists:
-`docs/uat/workers.md`, `docs/uat/oxygen.md` in the repository.
+After the swap, your entries leave that list. Per-platform checklists live in
+`docs/uat/` in the repository.
 
 ## Vendor terms
 
