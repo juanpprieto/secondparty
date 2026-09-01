@@ -5,7 +5,7 @@
 Serves third-party static assets (script, style, font) from the app origin through a
 runtime proxy, so the browser caches them for a year.
 
-## Quick start (React Router 7 on Node)
+## Quick start (React Router 8 on Node)
 
 `app/secondparty.config.server.ts`
 
@@ -69,40 +69,42 @@ chars. The handler serves that path with
 `If-None-Match` with 304.
 
 The core owns freshness. Each entry has a fixed `ttl` (default 1 hour). The vendor's
-`Cache-Control` is ignored. A stale record blocks the render until revalidation;
-revalidation sends `If-None-Match` when the vendor sent an ETag. Retention is
-`staleTtl` (default 7 days): inside it a vendor error serves stale; outside it the
-handler answers 502. After a vendor fault with no usable record, the entry function
+`Cache-Control` is ignored. A stale record blocks the render until revalidation,
+which sends `If-None-Match` when the vendor sent an ETag. Retention is
+`staleTtl` (default 7 days): inside that window a vendor error serves stale, and past
+it the handler answers 502. After a vendor fault with no usable record, the entry function
 returns the vendor URL itself (a **degraded result**) so the page still renders, and a
 30-second **negative record** stops retry storms.
 
 **Single flight:** one vendor fetch per key per process at a time. Calls that arrive
-during it — from renders or from the handler — wait for that fetch's outcome.
+during it, from renders or from the handler, wait for that fetch's outcome.
 
 The config is one server file. `defineSecondparty` infers one typed entry function per
-key; unknown keys and excess fields fail to compile. Keep the file server-only:
+key. Unknown keys and excess fields fail to compile. Keep the file server-only:
 `.server.ts` in React Router and Remix, `import 'server-only'` in Next.js,
 `server/utils/` in Nuxt. Astro and plain Vite rely on the runtime throw
 (`defineSecondparty` throws when a `document` global exists).
 
 Design facts: no CLI, no bundler plugin, no vendor bytes in the repo, no log schema.
-Bodies are verbatim — `secondparty` never rewrites vendor code. Builds are not
+Bodies are verbatim: `secondparty` never rewrites vendor code. Builds are not
 reproducible for vendor bytes: production serves what the vendor served at the last
 revalidation.
 
 ## Limitations
 
-**1. Freshness is bounded by `ttl`.** A vendor change lands within one `ttl`: inside it every
-visitor gets the record fetched last; past it the next render revalidates and the hash changes. The
+Eight things `secondparty` does not do. Read them before you ship.
+
+**1. Freshness is bounded by `ttl`.** A vendor change lands within one `ttl`. Inside it every
+visitor gets the record fetched last, and past it the next render revalidates and the hash changes. The
 old asset path keeps serving the current bytes, so stale HTML never 404s. Set a shorter `ttl` on
 entries whose vendor ships hotfixes.
 
 **2. Chained loads stay on the vendor CDN.** An entry covers the one URL your page references.
 Bodies are verbatim, so a loader that builds child URLs keeps them on the vendor CDN with the
-vendor's cache lifetime; Lighthouse lists the residual per URL. Seen on a live storefront: Meta
+vendor's cache lifetime. Lighthouse lists the residual per URL. Seen on a live storefront: Meta
 `signals/config` and the `tr` pixel, Clarity `clarity.js`, Global-e `freeShippingBanner` and
 `cookieConsentScript`, Forter `main.<hash>.js`. A relative `url()` or `sourceMappingURL` in a
-proxied file resolves under your prefix and 404s; an absolute one stays on the vendor CDN. Declaring
+proxied file resolves under your prefix and 404s. An absolute one stays on the vendor CDN. Declaring
 a child URL as its own entry helps only if your page references that asset path.
 
 **3. Vendors that self-locate.** Some vendor scripts find their own `<script>` tag by URL. Awin
@@ -113,30 +115,30 @@ test for effect (see Testing your integration).
 
 **4. Static-only hosts and Vercel Edge.** The handler and the entry functions run on a server at
 request time. A static export (Astro static, a SPA on S3, GitHub Pages) has no server: it cannot use
-`secondparty` and keeps the Lighthouse flag. Vercel Edge has no Cache API and is unsupported; Vercel
+`secondparty` and keeps the Lighthouse flag. Vercel Edge has no Cache API and is unsupported. Vercel
 Node functions work.
 
 **5. A degraded result serves the vendor URL.** When no record is usable (cold cache and the vendor
 fails, or the record is older than `staleTtl`), the entry function returns the vendor URL with
-`degraded: true`; the page renders and Lighthouse flags it until the next successful fetch. The
+`degraded: true`. The page renders, and Lighthouse flags it until the next successful fetch. The
 entry function never throws. The handler answers 502 on the same condition and never redirects to
 the vendor.
 
-**6. Vendor faults.** A vendor fault is a timeout (default 5 s), a network failure, a non-2xx status,
+**6. What counts as a vendor fault.** A timeout (default 5 s), a network failure, a non-2xx status,
 or a Content-Type outside the map. After a fault with no usable record, a 30-second negative record
 answers renders and handler requests (degraded result or 502) without a vendor fetch. There is no
-size cap: one record holds one body. A font served as `application/octet-stream` is a fault; the
+size cap: one record holds one body. A font served as `application/octet-stream` counts too. The
 vendor must send a `font/*` Content-Type.
 
 **7. Caches are per process and per data center.** Each Node process and each edge isolate owns its
-cache and single-flight map. A cluster with P processes takes P cold fetches per key; each edge
+cache and single-flight map. A cluster with P processes takes P cold fetches per key. Each edge
 location fetches once, so two locations can serve different hashes for one entry inside a `ttl`. Any
-hash serves the key's current bytes. In a monorepo each app owns its cache; nothing is shared.
+hash serves the key's current bytes. In a monorepo each app owns its cache. Nothing is shared.
 
 **8. `Set-Cookie` and cross-origin.** A `Set-Cookie` header on the handler response disables CDN
 caching on Cloudflare, Oxygen, and Vercel, with no warning. Mount the handler outside session
 middleware (see Platforms). Every response carries `Access-Control-Allow-Origin: *`, so a second
-origin can load the asset path; that path is untested. `integrity` attributes do not work: bytes
+origin can load the asset path. That path is untested. `integrity` attributes do not work: bytes
 rotate per `ttl`.
 
 ## Vendors
@@ -151,7 +153,24 @@ rotate per `ttl`.
 
 ## Platforms
 
-**Cloudflare Workers**
+The config file is the same everywhere: the quick start's `defineSecondparty` block.
+Per platform you choose two things: where the handler mounts and which cache you pass.
+Edge runtimes pass `await caches.open('secondparty')`. Node runtimes pass one
+`createMemoryCache()` per process.
+
+<details>
+<summary><strong>React Router on Node</strong> — tested (CI, link gate)</summary>
+
+The quick start is this platform. Bodies leave uncompressed (identity encoding) on
+the assumption that the platform compresses them, which `react-router-serve` already
+does. Behind bare `node:http` or Express, add compression middleware yourself.
+
+</details>
+
+<details>
+<summary><strong>Cloudflare Workers</strong> — tested (CI, wrangler dev)</summary>
+
+A bare worker:
 
 ```ts
 import { defineSecondparty } from 'secondparty'
@@ -165,14 +184,25 @@ export default {
 }
 ```
 
-React Router on Workers: ship a web `entry.server.tsx` (the default picks the Node
-pipeable-stream entry when `@react-router/node` is a dependency, and that entry throws
-on workerd), and return a `RouterContextProvider` from `getLoadContext`.
+React Router on Workers: mount the resource route as in the quick start with
+`cache: await caches.open('secondparty')`. Ship a web `entry.server.tsx` (the default
+picks the Node pipeable-stream entry when `@react-router/node` is a dependency, and
+that entry throws on workerd), and return a `RouterContextProvider` from
+`getLoadContext`.
 
-**Oxygen (Hydrogen)** — the CDN needs `Oxygen-Cache-Control` on the route:
+</details>
+
+<details>
+<summary><strong>Oxygen (Hydrogen)</strong> — manual checklist (docs/uat/oxygen.md)</summary>
+
+Name the route file `app/routes/[__sp].$.tsx`: Hydrogen's flat routes read a leading
+`_` as pathless, so `[__sp]` escapes the literal segment. The CDN needs
+`Oxygen-Cache-Control` on the route:
 
 ```ts
-export async function loader({ request, context }: LoaderFunctionArgs) {
+import { handle } from '~/lib/secondparty.config.server'
+
+export async function loader({ request }: LoaderFunctionArgs) {
   const res = await handle(request, { cache: await caches.open('secondparty') })
   const cc = res.headers.get('cache-control')
   if (cc && cc !== 'no-store') res.headers.set('Oxygen-Cache-Control', cc)
@@ -180,17 +210,39 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 ```
 
-**Node** — use the quick start. Bodies leave identity-encoded and the platform
-compresses; `react-router-serve` already does. Behind bare `node:http` or Express, add
-compression middleware yourself.
+Any loader then calls an entry function with the same cache and renders the returned
+URL, as in the quick start.
 
-**Vercel** — Node functions work: mount per your framework as above. The Edge runtime
-has no Cache API and is unsupported.
+</details>
 
-**Netlify** — Functions (Node) use `createMemoryCache()`; Edge Functions have the Cache
-API (`await caches.open('secondparty')`).
+<details>
+<summary><strong>Vercel</strong> — untested; mount shown</summary>
 
-**Astro** — endpoint `src/pages/__sp/[...path].ts`:
+Node functions work: mount per your framework (the quick start on React Router, or
+the Next.js block below). The Edge runtime has no Cache API and is unsupported.
+
+</details>
+
+<details>
+<summary><strong>Netlify</strong> — untested; mount shown</summary>
+
+Functions run on Node: mount per your framework and pass `createMemoryCache()`.
+Edge Functions have the Cache API:
+
+```ts
+import { handle } from '../shared/secondparty.config.ts'
+
+export default async (request: Request) =>
+  handle(request, { cache: await caches.open('secondparty') })
+export const config = { path: '/__sp/*' }
+```
+
+</details>
+
+<details>
+<summary><strong>Astro</strong> — untested; mount shown</summary>
+
+Endpoint `src/pages/__sp/[...path].ts`:
 
 ```ts
 import type { APIRoute } from 'astro'
@@ -200,7 +252,26 @@ import { cache } from '../../cache.server'
 export const ALL: APIRoute = ({ request }) => handle(request, { cache })
 ```
 
-**Nuxt** — `server/routes/__sp/[...].ts`:
+`cache.server.ts` exports one `createMemoryCache()`. Any SSR page calls the entry
+function in the frontmatter:
+
+```astro
+---
+import { entries } from '../secondparty.config.server'
+import { cache } from '../cache.server'
+const { url } = await entries.klaviyo({ cache })
+---
+<script src={url} async></script>
+```
+
+Astro has no build-time server-only guard. The runtime throw covers a client import.
+
+</details>
+
+<details>
+<summary><strong>Nuxt</strong> — untested; mount shown</summary>
+
+Config and cache live in `server/utils/`. Handler at `server/routes/__sp/[...].ts`:
 
 ```ts
 import { handle } from '~~/server/utils/secondparty.config'
@@ -209,7 +280,31 @@ import { cache } from '~~/server/utils/sp-cache'
 export default defineEventHandler((event) => handle(toWebRequest(event), { cache }))
 ```
 
-**Next.js** — `app/__sp/[...path]/route.ts`:
+Expose asset paths through a server route, then render them:
+
+```ts
+// server/api/sp.ts
+import { entries } from '~~/server/utils/secondparty.config'
+import { cache } from '~~/server/utils/sp-cache'
+
+export default defineEventHandler(async () => ({
+  klaviyo: (await entries.klaviyo({ cache })).url,
+}))
+```
+
+```vue
+<script setup>
+const { data } = await useFetch('/api/sp')
+useHead({ script: [{ src: data.value.klaviyo, async: true }] })
+</script>
+```
+
+</details>
+
+<details>
+<summary><strong>Next.js</strong> — untested; mount shown</summary>
+
+Handler at `app/__sp/[...path]/route.ts`:
 
 ```ts
 import 'server-only'
@@ -220,12 +315,28 @@ export const GET = (request: Request) => handle(request, { cache })
 export const HEAD = GET
 ```
 
+Any server component:
+
+```tsx
+import { entries } from '@/secondparty.config.server'
+import { cache } from '@/sp-cache'
+
+export default async function Page() {
+  const { url } = await entries.klaviyo({ cache })
+  return <script src={url} async />
+}
+```
+
+`@/sp-cache` exports one `createMemoryCache()` per process.
+
+</details>
+
 **Tested on**
 
 | Framework | Platform | Checked by |
 |---|---|---|
-| React Router 7 | Node 22 | CI (integration, Lighthouse) |
-| React Router 7 | Cloudflare Workers | CI (`wrangler dev`), manual preview (`docs/uat/workers.md`) |
+| React Router 8 | Node 22 | CI (integration, Lighthouse), link gate (`docs/uat/rr8-link.md`) |
+| React Router 8 | Cloudflare Workers | CI (`wrangler dev`), manual preview (`docs/uat/workers.md`) |
 | Hydrogen | Oxygen | manual (`docs/uat/oxygen.md`) |
 | Astro, Nuxt, Next.js | any | untested; mount shown |
 | any | Vercel, Netlify | untested; mount shown |
@@ -264,7 +375,7 @@ entry inside a `ttl`.
 
 ## Configuration reference
 
-Durations are in seconds; fractions are allowed.
+Durations are in seconds. Fractions are allowed.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -287,16 +398,16 @@ It also throws when a `document` global exists (client-import guard).
 
 Test for effect, not for absence of errors: load the page with the proxied script and
 check the vendor's globals, network requests, and dashboard. Lighthouse 13 reports
-cache lifetimes under the `cache-insight` audit ("Use efficient cache lifetimes");
-after the swap, your entries leave that list. Deployed-platform checklists:
+cache lifetimes under the `cache-insight` audit ("Use efficient cache lifetimes").
+After the swap, your entries leave that list. Deployed-platform checklists:
 `docs/uat/workers.md`, `docs/uat/oxygen.md` in the repository.
 
 ## Vendor terms
 
 No vendor terms we read name a proxy. Every vendor we read carries a generic no-copy clause. Read the
 terms of every vendor you declare before you ship. Google ships its own first-party path, the Google
-tag gateway; use it for Google tags. Vimeo `player.js` is MIT on npm as `@vimeo/player`; install it
-instead of proxying it.
+tag gateway. Use it for Google tags. Vimeo `player.js` is MIT on npm as `@vimeo/player`. Install
+that instead of proxying it.
 
 ## License
 

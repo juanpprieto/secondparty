@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "description": "Third-party scripts on first-party URLs, cached for a year.",
   "license": "MIT",
-  "repository": "https://github.com/juanpprieto/secondparty",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juanpprieto/secondparty.git"
+  },
   "keywords": [
     "third-party",
     "proxy",
