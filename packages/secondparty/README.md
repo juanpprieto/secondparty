@@ -133,7 +133,9 @@ vendor must send a `font/*` Content-Type.
 **7. Caches are per process and per data center.** Each Node process and each edge isolate owns its
 cache and single-flight map. A cluster with P processes takes P cold fetches per key. Each edge
 location fetches once, so two locations can serve different hashes for one entry inside a `ttl`. Any
-hash serves the key's current bytes. In a monorepo each app owns its cache. Nothing is shared.
+hash serves the key's current bytes. In a monorepo each app owns its cache. Nothing is shared. A
+bundler that duplicates the cache module across route bundles duplicates the cache too. Next.js
+does. The fix is one `globalThis` line (see Platforms).
 
 **8. `Set-Cookie` and cross-origin.** A `Set-Cookie` header on the handler response disables CDN
 caching on Cloudflare, Oxygen, and Vercel, with no warning. Mount the handler outside session
@@ -302,9 +304,11 @@ useHead({ script: [{ src: data.value.klaviyo, async: true }] })
 </details>
 
 <details>
-<summary><strong>Next.js</strong> — untested; mount shown</summary>
+<summary><strong>Next.js</strong> — tested (docs/uat/next-link.md)</summary>
 
-Handler at `app/__sp/[...path]/route.ts`:
+App Router folders that start with `_` are private and never route, so the default
+`/__sp/` prefix cannot mount under `app/`. Set `prefix: '/sp/'` in the config and
+mount the handler at `app/sp/[...path]/route.ts`:
 
 ```ts
 import 'server-only'
@@ -315,19 +319,34 @@ export const GET = (request: Request) => handle(request, { cache })
 export const HEAD = GET
 ```
 
+`sp-cache.ts` — Next bundles each route separately, so park the cache on
+`globalThis` to keep one instance per process:
+
+```ts
+import 'server-only'
+import { createMemoryCache } from 'secondparty'
+
+const g = globalThis as typeof globalThis & { __spCache?: ReturnType<typeof createMemoryCache> }
+export const cache = (g.__spCache ??= createMemoryCache())
+```
+
 Any server component:
 
 ```tsx
 import { entries } from '@/secondparty.config.server'
 import { cache } from '@/sp-cache'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Page() {
-  const { url } = await entries.klaviyo({ cache })
+  const { url } = await entries.vimeo({ cache })
   return <script src={url} async />
 }
 ```
 
-`@/sp-cache` exports one `createMemoryCache()` per process.
+A statically prerendered page bakes the asset path at build time and never
+revalidates it. The handler still serves that path. Force the page dynamic for
+per-request freshness.
 
 </details>
 
@@ -338,7 +357,8 @@ export default async function Page() {
 | React Router 8 | Node 22 | CI (integration, Lighthouse), link gate (`docs/uat/rr8-link.md`) |
 | React Router 8 | Cloudflare Workers | CI (`wrangler dev`), manual preview (`docs/uat/workers.md`) |
 | Hydrogen | Oxygen | manual (`docs/uat/oxygen.md`) |
-| Astro, Nuxt, Next.js | any | untested; mount shown |
+| Next.js | Node 22 | link gate (`docs/uat/next-link.md`) |
+| Astro, Nuxt | any | untested; mount shown |
 | any | Vercel, Netlify | untested; mount shown |
 
 ## Observability
