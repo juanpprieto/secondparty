@@ -1,6 +1,6 @@
 {
   "name": "secondparty",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Third-party scripts on first-party URLs, cached for a year.",
   "license": "MIT",
   "repository": {
